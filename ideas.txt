@@ -1,0 +1,29 @@
+make mock payment page with credit card details - Done
+
+Fields to add:
+    pincode
+    contact
+    dob
+    nominee_name
+    nominee_relation
+    nominee_dob
+    nominee_contact
+
+    {
+        "name": "",
+        "email": "",
+        "address": "",
+        "age": "",
+        "tenure": "",
+        "gender": "",
+        "sum_insured": ,
+        "pincode": ,
+        "contact": ,
+        "dob": "",
+        "nomineeDetails": {
+                "name": "",
+                "relation": "",
+                "dob": "",
+                "contact": ""
+        }
+    }
