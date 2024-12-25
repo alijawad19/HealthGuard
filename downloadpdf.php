@@ -6,7 +6,7 @@ require('fpdf186/fpdf.php');
 $application_id = filter_var($_REQUEST['application_id'], FILTER_VALIDATE_INT);
 
 if ($application_id) {
-    $stmt = $conn->prepare("SELECT * FROM proposals WHERE application_id = :application_id");
+    $stmt = $conn->prepare("SELECT * FROM proposals WHERE application_id = :application_id AND payment_status = '1'");
     $stmt->bindParam(':application_id', $application_id, PDO::PARAM_INT);
     $stmt->execute();
     $policyDetails = $stmt->fetch(PDO::FETCH_ASSOC);

@@ -17,11 +17,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
   if ($row) {
-      $stmt2 = $conn->prepare("SELECT payment FROM proposals WHERE application_id = :application_id LIMIT 1");
+      $stmt2 = $conn->prepare("SELECT payment_status FROM proposals WHERE application_id = :application_id LIMIT 1");
       $stmt2->execute(['application_id' => $row['application_id']]);
       $row2 = $stmt2->fetch(PDO::FETCH_ASSOC);
 
-      if ($row2['payment'] == 1) {
+      if ($row2['payment_status'] == 1) {
           $_SESSION['row'] = '';
       } else {
           $_SESSION['row'] = $row;
@@ -41,109 +41,148 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         die();
     }
 
-  // print_r($_POST); die;
-  $cardName = isset($_POST['nameOnCard']) ? htmlspecialchars(trim($_POST['nameOnCard'])) : null;
-  $cardNumber = isset($_POST['cardNumber']) ? htmlspecialchars(trim($_POST['cardNumber'])) : null;
-  $cardExpiry = isset($_POST['expiryDate']) ? htmlspecialchars(trim($_POST['expiryDate'])) : null;
-  $cvv = isset($_POST['cvv']) ? htmlspecialchars(trim($_POST['cvv'])) : null;
-  $application_id = isset($_POST['application_id']) ? htmlspecialchars(trim($_POST['application_id'])) : null;
-  $response_url = isset($_POST['response_url']) ? htmlspecialchars(trim($_POST['response_url'])) : null;
-  $response_url = html_entity_decode($response_url);
+  if ($_POST['payment'] == 'paid') {
+    $cardName = isset($_POST['nameOnCard']) ? htmlspecialchars(trim($_POST['nameOnCard'])) : null;
+    $cardNumber = isset($_POST['cardNumber']) ? htmlspecialchars(trim($_POST['cardNumber'])) : null;
+    $cardExpiry = isset($_POST['expiryDate']) ? htmlspecialchars(trim($_POST['expiryDate'])) : null;
+    $cvv = isset($_POST['cvv']) ? htmlspecialchars(trim($_POST['cvv'])) : null;
+    $application_id = isset($_POST['application_id']) ? htmlspecialchars(trim($_POST['application_id'])) : null;
+    $response_url = isset($_POST['response_url']) ? htmlspecialchars(trim($_POST['response_url'])) : null;
+    $response_url = html_entity_decode($response_url);
+    $response_url = $response_url . '&payment=success';
 
-  if (is_null($cardName)) {
-    echo json_encode([
-      'success' => false,
-      'error' => 'Name is required'
+    if (is_null($cardName)) {
+      echo json_encode([
+        'success' => false,
+        'error' => 'Name is required'
+      ]);
+      die();
+    }
+
+    if (is_null($cardNumber) || $cardNumber != '4111111111111111111'
+    ) {
+      echo json_encode([
+        'success' => false,
+        'error' => 'Wrong card number'
+      ]);
+      die();
+    }
+
+    if (is_null($cardExpiry)) {
+      echo json_encode([
+        'success' => false,
+        'error' => 'Card expiry date is required'
+      ]);
+      die();
+    }
+
+    // Validate format of card expiry
+    if (!preg_match('/^(0[1-9]|1[0-2])\/([0-9]{2})$/', $cardExpiry)) {
+      echo json_encode([
+        'success' => false,
+        'error' => 'Invalid expiry date format. Please use MM/YY format.'
+      ]);
+      die();
+    }
+
+    // Split the expiry date into month and year
+    list($expMonth, $expYear) = explode('/', $cardExpiry);
+
+    // Get current year in two-digit format
+    $currentYear = date('y');
+    $currentMonth = date('m');
+
+    // Check if card is expired
+    if ($expYear < $currentYear || ($expYear == $currentYear && $expMonth < $currentMonth)
+    ) {
+      echo json_encode([
+        'success' => false,
+        'error' => 'Card expired.'
+      ]);
+      die();
+    }
+
+    if (is_null($cvv) || !is_numeric($cvv)
+    ) {
+      echo json_encode([
+        'success' => false,
+        'error' => 'CVV is required'
+      ]);
+      die();
+    }
+
+    $stmt = $conn->prepare("SELECT * FROM proposals WHERE application_id = :application_id LIMIT 1");
+    $stmt->execute(['application_id' => $application_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $tenure = $row['tenure'];
+
+    $start_date = new DateTime();
+    $start_date->setTime(0, 0,
+      0
+    );
+
+    $end_date = clone $start_date;
+    $end_date->modify("+{$tenure} years");
+    $end_date->modify("-1 day");
+
+    $start_date = $start_date->format('Y-m-d');
+    $end_date = $end_date->format('Y-m-d');
+
+    $updateStatement = $conn->prepare("UPDATE proposals SET payment_status = :payment_status, start_date = :start_date, end_date = :end_date WHERE application_id = :application_id");
+    $isUpdated = $updateStatement->execute([
+      'payment_status' => '1',
+      'start_date' => $start_date,
+      'end_date' => $end_date,
+      'application_id' => $application_id
     ]);
-    die();
-  }
 
-  if (is_null($cardNumber) || $cardNumber != '4111111111111111111') {
-    echo json_encode([
-      'success' => false,
-      'error' => 'Wrong card number'
-    ]);
-    die();
-  }
+    if ($isUpdated) {
+      $sumInsured = $row['sum_insured'];
+      $premiumPaid = $row['total_premium'];
 
-  if (is_null($cardExpiry)) {
-    echo json_encode([
-      'success' => false,
-      'error' => 'Card expiry date is required'
-    ]);
-    die();
-  }
+      $insertPolicyStmt = $conn->prepare("INSERT INTO policies (application_id, issuance_date, expiry_date, sum_insured, premium_paid, policy_status) 
+            VALUES (:application_id, :issuance_date, :expiry_date, :sum_insured, :premium_paid, :policy_status)");
 
-  $thisMonth = date('m/y');
+      $isPolicyInserted = $insertPolicyStmt->execute([
+        'application_id' => $application_id,
+        'issuance_date' => $start_date,
+        'expiry_date' => $end_date,
+        'sum_insured' => $sumInsured,
+        'premium_paid' => $premiumPaid,
+        'policy_status' => 'active'
+      ]);
 
-  // Validate format of card expiry
-  if (!preg_match('/^(0[1-9]|1[0-2])\/([0-9]{2})$/', $cardExpiry)) {
-    echo json_encode([
-      'success' => false,
-      'error' => 'Invalid expiry date format. Please use MM/YY format.'
-    ]);
-    die();
-  }
+      if ($isPolicyInserted) {
+        echo json_encode([
+          'success' => true,
+          'error' => '',
+          'url' => $response_url
+        ]);
+        die();
+      } else {
+        echo json_encode([
+          'success' => false,
+          'error' => 'Policy creation failed. Please try again.'
+        ]);
+        die();
+      }
+    } else {
+      echo json_encode([
+        'success' => false,
+        'error' => 'Payment failed. Please try again.'
+      ]);
+      die();
+    }
+  } else {
+    $response_url = isset($_POST['response_url']) ? htmlspecialchars(trim($_POST['response_url'])) : null;
+    $response_url = html_entity_decode($response_url);
+    $response_url = $response_url . '&payment=failed';
 
-  // Split the expiry date into month and year
-  list($expMonth, $expYear) = explode('/', $cardExpiry);
-
-  // Get current year in two-digit format
-  $currentYear = date('y');
-  $currentMonth = date('m');
-
-  // Check if card is expired
-  if ($expYear < $currentYear || ($expYear == $currentYear && $expMonth < $currentMonth)) {
-    echo json_encode([
-      'success' => false,
-      'error' => 'Card expired.'
-    ]);
-    die();
-  }
-
-  if (is_null($cvv) || !is_numeric($cvv)) {
-    echo json_encode([
-      'success' => false,
-      'error' => 'CVV is required'
-    ]);
-    die();
-  }
-
-  $stmt = $conn->prepare("SELECT * FROM proposals WHERE application_id = :application_id LIMIT 1");
-  $stmt->execute(['application_id' => $application_id]);
-  $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-  $tenure = $row['tenure'];
-
-  $start_date = new DateTime();
-  $start_date->setTime(0, 0, 0);
-
-  $end_date = clone $start_date;
-  $end_date->modify("+{$tenure} years");
-  $end_date->modify("-1 day");
-
-  $start_date = $start_date->format('Y-m-d');
-  $end_date = $end_date->format('Y-m-d');
-
-  $updateStatement = $conn->prepare("UPDATE proposals SET payment = :payment, start_date = :start_date, end_date = :end_date WHERE application_id = :application_id");
-  $isUpdated = $updateStatement->execute([
-    'payment' => '1',
-    'start_date' => $start_date,
-    'end_date' => $end_date,
-    'application_id' => $application_id
-  ]);
-
-  if ($isUpdated && $updateStatement->rowCount() > 0) {
     echo json_encode([
       'success' => true,
       'error' => '',
       'url' => $response_url
-    ]);
-    die();
-  } else {
-    echo json_encode([
-      'success' => false,
-      'error' => 'Payment failed. Please try again.'
     ]);
     die();
   }
@@ -204,8 +243,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
               </div>
 
-              <!-- Submit Button -->
-              <button type="submit" class="btn btn-primary w-100">Pay ₹<?php echo $_SESSION['row']['total_premium'] ?></button>
+              <!-- Buttons Container -->
+              <div class="d-flex justify-content-between mt-3">
+                <button type="button" class="btn btn-danger w-100" id="cancelPaymentButton">Cancel Payment</button>
+                <button type="submit" class="btn btn-success w-100">Pay ₹<?php echo $_SESSION['row']['total_premium']; ?></button>
+              </div>
+
+              <!-- Confirmation Modal -->
+              <div class="modal fade" id="cancelConfirmationModal" tabindex="-1" aria-labelledby="cancelConfirmationLabel" aria-hidden="true">
+                <div class="modal-dialog">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title" id="cancelConfirmationLabel">Cancel Payment</h5>
+                      <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                      </button>
+                    </div>
+                    <div class="modal-body">
+                      Are you sure you want to cancel this payment?
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-secondary" data-dismiss="modal">No</button>
+                      <button type="button" class="btn btn-danger" id="confirmCancelPayment">Yes, Cancel Payment</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </form>
           </div>
         <?php } else { ?>
@@ -224,6 +287,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <script>
     $(document).ready(function() {
+      $('#cancelPaymentButton').click(function() {
+        $('#cancelConfirmationModal').modal('show');
+      });
+
       $('#make-payment-form').submit(function(event) {
         event.preventDefault();
 
@@ -244,13 +311,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             cvv: cvv,
             application_id: application_id,
             response_url: response_url,
+            payment: 'paid',
             csrf_token: $('input[name="csrf_token"]').val() // Include CSRF token
           },
           success: function(response) {
             const responseData = JSON.parse(response);
 
             if (responseData.success) {
-              showErrorModal('Payment successfull');
+              showErrorModal('Payment successful');
               window.location.href = responseData.url;
             } else {
               const errorMessage = responseData.error || 'Something went wrong.';
@@ -259,6 +327,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           },
           error: function(jqXHR, textStatus, errorThrown) {
             showErrorModal('Something went wrong.');
+          }
+        });
+      });
+
+      $('#confirmCancelPayment').click(function() {
+        $('#cancelConfirmationModal').modal('hide');
+
+        const application_id = $('#application_id').val();
+        const response_url = $('#response_url').val();
+
+        $.ajax({
+          url: '',
+          method: 'POST',
+          data: {
+            application_id: application_id,
+            response_url: response_url,
+            payment: 'unpaid',
+            csrf_token: $('input[name="csrf_token"]').val() // Include CSRF token
+          },
+          success: function(response) {
+            const responseData = JSON.parse(response);
+
+            if (responseData.success) {
+              showErrorModal('Payment has been canceled.');
+              window.location.href = responseData.url;
+            } else {
+              const errorMessage = responseData.error || 'Failed to cancel payment.';
+              showErrorModal(errorMessage);
+            }
+          },
+          error: function() {
+            showErrorModal('Something went wrong while canceling the payment.');
           }
         });
       });
@@ -274,7 +374,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="errorModalLabel">Error</h5>
+          <h5 class="modal-title" id="errorModalLabel">Success!</h5>
           <button type="button" class="close" data-dismiss="modal" aria-label="Close">
             <span aria-hidden="true">&times;</span>
           </button>

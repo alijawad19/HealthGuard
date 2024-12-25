@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1:3306
--- Generation Time: Dec 07, 2024 at 10:16 AM
+-- Generation Time: Dec 25, 2024 at 03:19 PM
 -- Server version: 8.3.0
 -- PHP Version: 8.2.18
 
@@ -36,14 +36,28 @@ CREATE TABLE IF NOT EXISTS `payment_link` (
   `response_url` text NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `application_id` (`application_id`)
-) ENGINE=MyISAM AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
 
 --
--- Dumping data for table `payment_link`
+-- Table structure for table `policies`
 --
 
-INSERT INTO `payment_link` (`id`, `application_id`, `total_premium`, `shortened_code`, `response_url`) VALUES
-(5, 52126, 2360, 'eadCDq70LZuVWs', 'http://localhost/InsureScout/payment_return.php?provider_id=1&premium=2360&success=true&application_id=52126');
+DROP TABLE IF EXISTS `policies`;
+CREATE TABLE IF NOT EXISTS `policies` (
+  `policy_id` bigint NOT NULL AUTO_INCREMENT,
+  `application_id` bigint NOT NULL,
+  `issuance_date` date NOT NULL,
+  `expiry_date` date NOT NULL,
+  `sum_insured` bigint NOT NULL,
+  `premium_paid` bigint NOT NULL,
+  `policy_status` enum('active','expired','cancelled') DEFAULT 'active',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`policy_id`),
+  KEY `application_id` (`application_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
 
@@ -73,17 +87,10 @@ CREATE TABLE IF NOT EXISTS `proposals` (
   `start_date` date NOT NULL,
   `end_date` date NOT NULL,
   `application_id` bigint NOT NULL,
-  `payment` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT '0',
+  `payment_status` enum('0','1') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `application_id` (`application_id`)
-) ENGINE=MyISAM AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
---
--- Dumping data for table `proposals`
---
-
-INSERT INTO `proposals` (`id`, `name`, `email`, `address`, `pincode`, `contact`, `age`, `gender`, `dob`, `nominee_name`, `nominee_relation`, `nominee_dob`, `nominee_contact`, `tenure`, `net_premium`, `total_premium`, `sum_insured`, `start_date`, `end_date`, `application_id`, `payment`) VALUES
-(17, 'Ali Jawad', 'jawad@gmail.com', 'Kunnil, P.O Mogral Puthur', 671124, '9746542694', 24, 'male', '2000-07-02', 'Jabbu', 'Brother', '2000-07-02', '7012085535', 1, 2000, 2360, 1000000, '2024-10-06', '2025-10-05', 52126, '1');
+) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

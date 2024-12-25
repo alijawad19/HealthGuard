@@ -150,7 +150,7 @@ A PDF file containing the policy document.
    ```bash
    composer install
    ```
-3. Configure the application:Update the database connection and other settings in the `config.php` file.
+3. Configure the application:Import the `health_guard.sql` file. Update the database connection and other settings in the `config/db_connection.php` file.
 4. Start the server:
 
    ```bash
